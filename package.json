@@ -35,14 +35,25 @@
     "prebuild-install": "^7.1.3"
   },
   "build": {
-    "appId": "com.schirbe.app",
-    "productName": "Schirbe",
+    "appId": "com.schribe.app",
+    "productName": "Schribe",
+    "asar": true,
     "directories": {
       "output": "dist"
     },
+    "files": [
+      "dist/**/*",
+      "main/**/*",
+      "package.json"
+    ],
     "win": {
       "target": [
-        "nsis"
+        {
+          "target": "nsis",
+          "arch": [
+            "x64"
+          ]
+        }
       ],
       "icon": "assets/Schribe.png"
     },
