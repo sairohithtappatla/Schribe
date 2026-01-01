@@ -65,8 +65,8 @@
     "publish": [
       {
         "provider": "github",
-        "owner": "SAIROHITH",
-        "repo": "Schirbe"
+        "owner": "sairohithtappatla",
+        "repo": "Schribe"
       }
     ]
   }
