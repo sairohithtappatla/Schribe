@@ -27,15 +27,13 @@ jobs:
           cache: 'npm'
 
       - name: Install Dependencies
-        run: |
-          npm install -g node-abi prebuild-install
-          npm install --no-audit
+        run: npm install --no-audit
 
       - name: Build and Publish
         run: |
           if [ "$RUNNER_OS" == "Windows" ]; then
             npx electron-builder --win -p always
-          elif [ "$RUNNER_OS" == "macOS" ]; then
+          else
             npx electron-builder --mac -p always
           fi
         shell: bash
