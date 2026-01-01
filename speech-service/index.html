@@ -1,0 +1,438 @@
+<!DOCTYPE html>
+<html>
+
+<head>
+  <meta charset="UTF-8">
+  <title>Schirbe - Speech Service</title>
+  <!-- CONFIG_PLACEHOLDER -->
+  <style>
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
+
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      background: linear-gradient(135deg, #1a1a2e 0%, #16213e 100%);
+      color: white;
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      padding: 40px;
+    }
+
+    .container {
+      text-align: center;
+      max-width: 500px;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+    }
+
+    .logo {
+      width: 120px;
+      height: 120px;
+      margin-bottom: 20px;
+      border-radius: 24px;
+      box-shadow: 0 10px 30px rgba(0, 0, 0, 0.3);
+      border: 1px solid rgba(255, 255, 255, 0.1);
+    }
+
+    h1 {
+      font-size: 28px;
+      margin-bottom: 5px;
+      letter-spacing: -0.5px;
+      color: #FFFFFF;
+    }
+
+    .subtitle {
+      color: rgba(255, 255, 255, 0.5);
+      margin-bottom: 40px;
+      font-size: 15px;
+      font-weight: 400;
+    }
+
+    .status-card {
+      background: rgba(255, 255, 255, 0.05);
+      border: 1px solid rgba(255, 255, 255, 0.1);
+      border-radius: 16px;
+      padding: 30px;
+      margin-bottom: 20px;
+    }
+
+    .connection-status {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 10px;
+      font-size: 16px;
+      margin-bottom: 20px;
+    }
+
+    .status-dot {
+      width: 12px;
+      height: 12px;
+      border-radius: 50%;
+      background: #888;
+      transition: all 0.3s;
+    }
+
+    .status-dot.connected {
+      background: #4ADE80;
+      box-shadow: 0 0 10px #4ADE80;
+    }
+
+    .status-dot.disconnected {
+      background: #EF4444;
+    }
+
+    .status-dot.recording {
+      background: #4ADE80;
+      animation: pulse 1s infinite;
+    }
+
+    .mic-indicator {
+      font-size: 64px;
+      margin: 20px 0;
+      opacity: 0.3;
+      transition: opacity 0.3s, transform 0.3s;
+    }
+
+    .mic-indicator.active {
+      opacity: 1;
+      transform: scale(1.1);
+    }
+
+    .transcript-preview {
+      background: rgba(0, 0, 0, 0.3);
+      border-radius: 8px;
+      padding: 15px;
+      min-height: 60px;
+      font-size: 14px;
+      color: rgba(255, 255, 255, 0.8);
+      text-align: left;
+      word-wrap: break-word;
+    }
+
+    .instructions {
+      color: rgba(255, 255, 255, 0.5);
+      font-size: 12px;
+      line-height: 1.6;
+    }
+
+    .minimized-hint {
+      margin-top: 30px;
+      padding: 15px;
+      background: rgba(74, 222, 128, 0.1);
+      border: 1px solid rgba(74, 222, 128, 0.3);
+      border-radius: 8px;
+      font-size: 13px;
+      color: #4ADE80;
+    }
+
+    @keyframes pulse {
+
+      0%,
+      100% {
+        opacity: 1;
+      }
+
+      50% {
+        opacity: 0.5;
+      }
+    }
+  </style>
+</head>
+
+<body>
+  <div class="container">
+    <img src="/assets/Schribe.png" alt="Schirbe Logo" class="logo">
+    <h1>Schirbe</h1>
+    <p class="subtitle">Say it. It’s already written.</p>
+
+    <div class="status-card">
+      <div class="connection-status">
+        <span class="status-dot" id="statusDot"></span>
+        <span id="connectionText">Connecting...</span>
+      </div>
+
+      <div class="mic-indicator" id="micIndicator">🎙️</div>
+
+      <div class="transcript-preview" id="transcript">
+        Waiting for dictation...
+      </div>
+    </div>
+
+    <div class="minimized-hint">
+      ✅ You can minimize this tab — it will keep working in the background!
+    </div>
+
+    <p class="instructions">
+      🎤 Use Ctrl+Hold in any app to dictate<br>
+      ✨ Text will appear in the Schirbe popup
+    </p>
+  </div>
+
+  <script>
+    const config = window.DICTATOR_CONFIG || { WS_PORT: 9847, TOKEN: '' };
+
+    let ws = null;
+    let recognition = null;
+    let isRecording = false;
+    let authenticated = false;
+    let finalTextBuffer = [];
+    let pendingStop = false;
+
+    const statusDot = document.getElementById('statusDot');
+    const connectionText = document.getElementById('connectionText');
+    const micIndicator = document.getElementById('micIndicator');
+    const transcriptEl = document.getElementById('transcript');
+
+    function sendFinalResult() {
+      const finalText = finalTextBuffer.join(' ').trim();
+      console.log('📤 Sending FINAL_RESULT:', finalText || '(empty)');
+
+      sendMessage({
+        type: 'FINAL_RESULT',
+        text: finalText
+      });
+
+      transcriptEl.textContent = finalText || 'No speech detected';
+      finalTextBuffer = [];
+      pendingStop = false;
+    }
+
+    function initRecognition() {
+      recognition = new (window.SpeechRecognition || window.webkitSpeechRecognition)();
+      recognition.continuous = true;
+      recognition.interimResults = false;
+      recognition.lang = 'en-US';
+      recognition.maxAlternatives = 1;
+
+      recognition.onstart = () => {
+        console.log('✅ Recognition started successfully');
+      };
+
+      recognition.onresult = (event) => {
+        for (let i = event.resultIndex; i < event.results.length; i++) {
+          if (event.results[i].isFinal) {
+            const text = event.results[i][0].transcript;
+            finalTextBuffer.push(text);
+            console.log('📝 Final result segment:', text);
+          }
+        }
+      };
+
+      recognition.onerror = (event) => {
+        console.error('❌ Recognition error:', event.error);
+
+        if (event.error === 'not-allowed') {
+          transcriptEl.textContent = '❌ Microphone permission denied!';
+          sendMessage({ type: 'error', error: 'Microphone access denied' });
+          isRecording = false;
+          micIndicator.classList.remove('active');
+          statusDot.classList.remove('recording');
+          return;
+        }
+
+        if (event.error === 'network') {
+          transcriptEl.textContent = '❌ Network error - check internet connection';
+          sendMessage({ type: 'error', error: 'Network error - cannot reach speech service' });
+          isRecording = false;
+          micIndicator.classList.remove('active');
+          statusDot.classList.remove('recording');
+          return;
+        }
+
+        if (event.error === 'service-not-allowed') {
+          transcriptEl.textContent = '❌ Speech service not available';
+          sendMessage({ type: 'error', error: 'Speech service blocked or unavailable' });
+          isRecording = false;
+          micIndicator.classList.remove('active');
+          statusDot.classList.remove('recording');
+          return;
+        }
+
+        // Ignore benign errors
+        if (event.error !== 'no-speech' &&
+          event.error !== 'aborted' &&
+          event.error !== 'audio-capture') {
+          sendMessage({ type: 'error', error: event.error });
+        }
+      };
+
+      recognition.onend = () => {
+        console.log('🔄 Recognition ended - isRecording:', isRecording, 'pendingStop:', pendingStop);
+
+        if (pendingStop) {
+          // User released Ctrl - send final result
+          setTimeout(() => {
+            sendFinalResult();
+          }, 200);
+        } else if (isRecording) {
+          // ✅ Auto-restart if Ctrl still held
+          console.log('♻️ Auto-restarting (Ctrl still held)...');
+          setTimeout(() => {
+            if (isRecording && !pendingStop) {
+              try {
+                recognition.start();
+                console.log('✅ Restarted successfully');
+              } catch (e) {
+                console.error('❌ Restart failed:', e);
+                // Retry once more
+                setTimeout(() => {
+                  if (isRecording && !pendingStop) {
+                    try {
+                      recognition.start();
+                      console.log('✅ Retry successful');
+                    } catch (err) {
+                      console.error('❌ Retry failed:', err);
+                    }
+                  }
+                }, 300);
+              }
+            }
+          }, 100);
+        }
+      };
+    }
+
+    let lastStartTime = 0;
+
+    function startRecording() {
+      if (isRecording) {
+        console.log('⚠️ Already recording');
+        return;
+      }
+
+      console.log('🎙️ Starting recording...');
+      lastStartTime = Date.now();
+      finalTextBuffer = [];
+      pendingStop = false;
+      transcriptEl.textContent = 'Listening...';
+      isRecording = true;
+      micIndicator.classList.add('active');
+      statusDot.classList.add('recording');
+
+      try {
+        recognition.start();
+        console.log('✅ Start requested');
+      } catch (e) {
+        console.error('❌ Start failed:', e);
+        isRecording = false;
+        micIndicator.classList.remove('active');
+        statusDot.classList.remove('recording');
+      }
+    }
+
+    function stopRecording() {
+      if (!isRecording) return;
+
+      const duration = Date.now() - lastStartTime;
+      console.log(`🛑 Stopping... (duration: ${duration}ms)`);
+
+      // ✅ Guard against premature stop (less than 500ms)
+      if (duration < 500) {
+        console.log('⏳ Hold longer for recognition to start properly');
+        // We'll wait a bit before actually stopping
+        setTimeout(() => {
+          if (isRecording) performStop();
+        }, 500 - duration);
+      } else {
+        performStop();
+      }
+    }
+
+    function performStop() {
+      isRecording = false;
+      pendingStop = true;
+      micIndicator.classList.remove('active');
+      statusDot.classList.remove('recording');
+
+      try {
+        recognition.stop();
+        console.log('✅ Stop requested');
+      } catch (e) {
+        console.error('❌ Stop failed:', e);
+        setTimeout(sendFinalResult, 150);
+      }
+    }
+
+    function sendMessage(msg) {
+      if (ws && ws.readyState === WebSocket.OPEN && authenticated) {
+        ws.send(JSON.stringify(msg));
+      }
+    }
+
+    function connect() {
+      const wsUrl = `ws://127.0.0.1:${config.WS_PORT}`;
+      console.log('🔌 Connecting to:', wsUrl);
+
+      ws = new WebSocket(wsUrl);
+
+      ws.onopen = () => {
+        console.log('🔓 WebSocket connected, authenticating...');
+        ws.send(JSON.stringify({ type: 'auth', token: config.TOKEN }));
+      };
+
+      ws.onmessage = (event) => {
+        try {
+          const msg = JSON.parse(event.data);
+          console.log('📨 Received:', msg.type);
+
+          if (msg.type === 'auth_ok') {
+            authenticated = true;
+            statusDot.classList.add('connected');
+            statusDot.classList.remove('disconnected');
+            connectionText.textContent = 'Connected & Ready';
+          } else if (msg.type === 'start') {
+            startRecording();
+          } else if (msg.type === 'stop') {
+            stopRecording();
+          }
+        } catch (e) {
+          console.error('Parse error:', e);
+        }
+      };
+
+      ws.onclose = (event) => {
+        console.log('❌ Disconnected:', event.code);
+        authenticated = false;
+        statusDot.classList.remove('connected');
+        statusDot.classList.add('disconnected');
+        connectionText.textContent = 'Disconnected - Reconnecting...';
+        setTimeout(connect, 2000);
+      };
+
+      ws.onerror = (error) => {
+        console.error('WebSocket error:', error);
+      };
+    }
+
+    // Initialize
+    console.log('🚀 Initializing speech service...');
+    initRecognition();
+    connect();
+
+    // Request mic permission
+    navigator.mediaDevices.getUserMedia({ audio: true })
+      .then(stream => {
+        console.log('✅ Microphone permission granted');
+        if (transcriptEl) transcriptEl.textContent = 'Ready! Hold Ctrl in any app to dictate.';
+        window.micStream = stream; // Keep stream alive
+      })
+      .catch(err => {
+        console.error('❌ Mic permission denied:', err);
+        if (transcriptEl) transcriptEl.textContent = '⚠️ Microphone permission denied!';
+        sendMessage({
+          type: 'error',
+          error: 'Microphone permission denied: ' + err.message
+        });
+      });
+  </script>
+</body>
+
+</html>

@@ -1,0 +1,73 @@
+{
+  "name": "schirbe",
+  "version": "1.0.0",
+  "description": "Production-grade universal dictation desktop application",
+  "main": "main/index.js",
+  "scripts": {
+    "start": "electron .",
+    "build": "electron-builder",
+    "postinstall": "electron-builder install-app-deps"
+  },
+  "keywords": [
+    "dictation",
+    "speech-to-text",
+    "electron",
+    "productivity"
+  ],
+  "author": "",
+  "license": "ISC",
+  "dependencies": {
+    "auto-launch": "^5.0.5",
+    "electron-log": "^5.0.0",
+    "electron-store": "^8.1.0",
+    "electron-updater": "^6.6.2",
+    "open": "^8.4.2",
+    "robotjs": "^0.6.0",
+    "uiohook-napi": "^1.5.0",
+    "user": "^0.0.0",
+    "ws": "^8.14.2"
+  },
+  "devDependencies": {
+    "@electron/rebuild": "^3.3.0",
+    "electron": "^28.0.0",
+    "electron-builder": "^24.6.4",
+    "node-abi": "^4.24.0",
+    "prebuild-install": "^7.1.3"
+  },
+  "build": {
+    "appId": "com.schirbe.app",
+    "productName": "Schirbe",
+    "directories": {
+      "output": "dist"
+    },
+    "win": {
+      "target": [
+        "nsis"
+      ],
+      "icon": "assets/Schribe.png"
+    },
+    "nsis": {
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": true,
+      "createDesktopShortcut": true,
+      "runAfterFinish": true
+    },
+    "mac": {
+      "category": "public.app-category.productivity",
+      "target": [
+        "dmg"
+      ],
+      "hardenedRuntime": true,
+      "gatekeeperAssess": false,
+      "entitlements": "build/entitlements.mac.plist",
+      "entitlementsInherit": "build/entitlements.mac.plist"
+    },
+    "publish": [
+      {
+        "provider": "github",
+        "owner": "SAIROHITH",
+        "repo": "Schirbe"
+      }
+    ]
+  }
+}
