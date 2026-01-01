@@ -27,9 +27,11 @@ jobs:
           cache: 'npm'
 
       - name: Install Dependencies
-        run: npm install --no-audit
+        run: |
+          npm install --no-audit
+          npx electron-rebuild -f -w robotjs,uiohook-napi
 
       - name: Build and Publish
-        run: npm run build
+        run: npx electron-builder --win --mac -p always
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
